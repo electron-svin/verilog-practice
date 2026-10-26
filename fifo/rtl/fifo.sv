@@ -38,35 +38,83 @@ logic new_read_ptr_parity;
 
 // Push/pop logic for new pointers
 always_comb begin
-    new_write_ptr = write_ptr;
-    new_read_ptr = read_ptr;
-    new_write_ptr_parity = write_ptr_parity;
-    new_read_ptr_parity = read_ptr_parity;
+    case ({pop, push})
+        2'b00:
+            begin
+                new_write_ptr = write_ptr;
+                new_read_ptr = read_ptr;
+                new_write_ptr_parity = write_ptr_parity;
+                new_read_ptr_parity = read_ptr_parity;
+                if (empty) begin
+                    data_out = 'b0;
+                end else begin
+                    data_out = fifo_buffer[read_ptr];
+                end
+            end
+        2'b01:
+            begin
+                new_write_ptr = write_ptr;
+                new_write_ptr_parity = write_ptr_parity;
+                if (~full) begin
+                    if (write_ptr == PTR_WIDTH'(FIFO_DEPTH - 1)) begin
+                        new_write_ptr = 'd0;
+                        new_write_ptr_parity = ~write_ptr_parity;
+                    end else begin
+                        new_write_ptr = write_ptr + 'd1;
+                    end
+                end
+                data_out = fifo_buffer[read_ptr];
+            end
+        2'b10:
+            begin
+                new_read_ptr_parity = read_ptr_parity;
+                new_read_ptr = read_ptr;
+                if (~empty) begin
+                    if (read_ptr == PTR_WIDTH'(FIFO_DEPTH - 1)) begin
+                        new_read_ptr = 'd0;
+                        new_read_ptr_parity = ~read_ptr_parity;
+                    end else begin
+                        new_read_ptr = read_ptr + 'd1;
+                    end
+                    data_out = fifo_buffer[read_ptr];
+                end else begin
+                    data_out = 'b0;
+                end
+            end
+        2'b11:
+            begin
+                if (empty) begin
+                    new_write_ptr = write_ptr;
+                    new_read_ptr = read_ptr;
+                    new_write_ptr_parity = write_ptr_parity;
+                    new_read_ptr_parity = read_ptr_parity;
+                    data_out = data_in;
+                end else begin
+                    if (read_ptr == PTR_WIDTH'(FIFO_DEPTH - 1)) begin
+                        new_read_ptr = 'd0;
+                        new_read_ptr_parity = ~read_ptr_parity;
+                    end else begin
+                        new_read_ptr = read_ptr + 'd1;
+                    end
 
-    if (push & ~full) begin
-        if (write_ptr == PTR_WIDTH'(FIFO_DEPTH - 1)) begin
-            new_write_ptr = 'd0;
-            new_write_ptr_parity = ~write_ptr_parity;
-        end else begin
-            new_write_ptr = write_ptr + 'd1;
-        end
-    end 
+                    if (write_ptr == PTR_WIDTH'(FIFO_DEPTH - 1)) begin
+                        new_write_ptr = 'd0;
+                        new_write_ptr_parity = ~write_ptr_parity;
+                    end else begin
+                        new_write_ptr = write_ptr + 'd1;
+                    end
 
-    if (pop & ~empty) begin
-        if (read_ptr == PTR_WIDTH'(FIFO_DEPTH - 1)) begin
-            new_read_ptr = 'd0;
-            new_read_ptr_parity = ~read_ptr_parity;
-        end else begin
-            new_read_ptr = read_ptr + 'd1;
-        end
-    end
+                    data_out = fifo_buffer[read_ptr];
+                end
+            end
+    endcase 
 end
 
 // Sequential logic 
 always_ff @(posedge clk or negedge rst_n) begin
     if (~rst_n) begin
-        write_ptr <= '0;
-        read_ptr <= '0;
+        write_ptr <= 'd0;
+        read_ptr <= 'd0;
         write_ptr_parity <= 1'b0;
         read_ptr_parity <= 1'b0;
     end else begin
@@ -80,12 +128,10 @@ end
 // Write/read transaction
 
 always_ff @(posedge clk) begin
-    if (push & ~full) begin
+    if (push & (~full | pop)) begin
             fifo_buffer[write_ptr] <= data_in;
     end
 end
-
-assign data_out = fifo_buffer[read_ptr];
 
 // Empty/full logic
 
